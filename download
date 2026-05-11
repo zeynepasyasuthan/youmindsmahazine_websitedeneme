@@ -1,0 +1,54 @@
+import React, { useState, useEffect } from 'react';
+import { collection, getDocs, orderBy, query } from 'firebase/firestore';
+import { db } from '../lib/firebase';
+import MagazineCard from '../components/MagazineCard';
+import MagazineReader from '../components/MagazineReader';
+import { AnimatePresence } from 'motion/react';
+
+const Archive: React.FC = () => {
+  const [magazines, setMagazines] = useState<any[]>([]);
+  const [selectedMag, setSelectedMag] = useState<any | null>(null);
+
+  useEffect(() => {
+    const fetchMagazines = async () => {
+      const q = query(collection(db, 'magazines'), orderBy('issueNumber', 'desc'));
+      const snap = await getDocs(q);
+      setMagazines(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    };
+    fetchMagazines();
+  }, []);
+
+  return (
+    <div className="max-w-6xl mx-auto p-8 space-y-12">
+      <div className="border-b border-wine/10 pb-8">
+        <h2 className="font-serif text-5xl italic text-wine">Dergi Arşivi</h2>
+        <p className="font-body text-gold text-lg mt-2">Geçmişten günümüze tüm sayılarımız.</p>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+        {magazines.length > 0 ? magazines.map((mag) => (
+          <MagazineCard 
+            key={mag.id} 
+            magazine={mag} 
+            onOpen={(m) => setSelectedMag(m)} 
+          />
+        )) : (
+          <div className="col-span-full py-24 text-center">
+            <p className="font-body text-wine/40 italic">Henüz yüklü sayı bulunmamaktadır.</p>
+          </div>
+        )}
+      </div>
+
+      <AnimatePresence>
+        {selectedMag && (
+          <MagazineReader 
+            magazine={selectedMag} 
+            onClose={() => setSelectedMag(null)} 
+          />
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
+export default Archive;

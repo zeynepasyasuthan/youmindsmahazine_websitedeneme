@@ -1,0 +1,100 @@
+import React, { useState } from 'react';
+import { Coffee, Heart, DollarSign } from 'lucide-react';
+import { motion } from 'motion/react';
+import { useAuth } from '../context/AuthContext';
+import { db } from '../lib/firebase';
+import { collection, addDoc, serverTimestamp, doc, updateDoc, increment } from 'firebase/firestore';
+
+const CoffeeView: React.FC = () => {
+  const { user } = useAuth();
+  const [amount, setAmount] = useState<number | string>(5);
+  const [loading, setLoading] = useState(false);
+
+  const handleDonate = async () => {
+    if (!user) return alert('Bağış yapmak için lütfen giriş yapın.');
+    const val = Number(amount);
+    if (isNaN(val) || val <= 0) return alert('Lütfen geçerli bir miktar girin.');
+
+    setLoading(true);
+    try {
+      // Record donation
+      await addDoc(collection(db, 'donations'), {
+        userId: user.uid,
+        amount: val,
+        createdAt: serverTimestamp()
+      });
+
+      // Update user total
+      const userRef = doc(db, 'users', user.uid);
+      await updateDoc(userRef, {
+        totalDonations: increment(val)
+      });
+
+      alert('Bağışınız için teşekkür ederiz! YOU\' MINDS topluluğu sizinle büyüyor.');
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="max-w-4xl mx-auto p-8 flex flex-col items-center justify-center min-h-[70vh] space-y-12">
+      <motion.div 
+        initial={{ scale: 0.9, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        className="text-center space-y-6"
+      >
+        <div className="w-24 h-24 bg-gold/10 text-gold rounded-full flex items-center justify-center mx-auto mb-8">
+          <Coffee size={48} />
+        </div>
+        <h2 className="font-serif text-5xl italic text-wine">Buy Us a Coffee</h2>
+        <p className="font-body text-xl text-wine/60 max-w-xl mx-auto italic">
+          Bize bir kahve ısmarlayarak dergimizin sürdürülebilirliğine katkıda bulunabilir ve bağımsız yayıncılığı destekleyebilirsiniz.
+        </p>
+      </motion.div>
+
+      <div className="w-full max-w-md bg-white p-8 rounded-3xl shadow-xl border border-wine/10 space-y-8">
+        <div className="grid grid-cols-3 gap-4">
+          {[5, 10, 20].map((val) => (
+            <button
+              key={val}
+              onClick={() => setAmount(val)}
+              className={`py-4 rounded-xl font-sans font-bold transition-all ${amount === val ? 'bg-wine text-beige' : 'bg-beige text-wine border border-wine/10 hover:border-wine'}`}
+            >
+              ${val}
+            </button>
+          ))}
+        </div>
+
+        <div className="relative">
+          <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 text-wine/30" size={20} />
+          <input 
+            type="number"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            placeholder="Farklı Bir miktar"
+            className="w-full pl-12 pr-4 py-4 bg-beige border border-wine/10 rounded-xl outline-none focus:border-wine transition-all font-sans font-bold text-wine"
+          />
+        </div>
+
+        <button 
+          onClick={handleDonate}
+          disabled={loading}
+          className="w-full editorial-gradient text-beige font-sans font-bold py-5 rounded-2xl shadow-lg flex items-center justify-center gap-3 hover:translate-y-[-2px] active:scale-[0.98] transition-all"
+        >
+          {loading ? 'İşleniyor...' : (
+            <>
+              <Heart size={20} fill="currentColor" />
+              Şimdi Destekle
+            </>
+          )}
+        </button>
+
+        <p className="text-[10px] uppercase font-bold text-wine/30 text-center tracking-widest">Tüm bağışlar dergi kalitesini artırmak için kullanılır.</p>
+      </div>
+    </div>
+  );
+};
+
+export default CoffeeView;
