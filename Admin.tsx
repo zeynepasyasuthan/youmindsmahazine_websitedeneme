@@ -1,132 +1,167 @@
 import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { X, Send, Lock } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { collection, addDoc, query, where, orderBy, onSnapshot, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, query, where, getDocs, doc, updateDoc, deleteDoc, orderBy } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import { Plus, Check, X, BookOpen, MessageSquare, Newspaper, Trash2 } from 'lucide-react';
 
-interface ReviewPopupProps {
-  isOpen: boolean;
-  onClose: () => void;
-  magazineId: string;
-}
+const Admin: React.FC = () => {
+  const { isAdmin } = useAuth();
+  const [activeSubTab, setActiveSubTab] = useState<'magazines' | 'blogs' | 'reviews'>('magazines');
 
-const ReviewPopup: React.FC<ReviewPopupProps> = ({ isOpen, onClose, magazineId }) => {
-  const { user } = useAuth();
-  const [comment, setComment] = useState('');
-  const [reviews, setReviews] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
+  // Magazine stats/forms
+  const [magTitle, setMagTitle] = useState('');
+  const [magIssue, setMagIssue] = useState('');
+  const [magCover, setMagCover] = useState('');
+  const [magDesc, setMagDesc] = useState('');
+  const [magPages, setMagPages] = useState(''); // comma separated for now
+
+  // Blog forms
+  const [blogTitle, setBlogTitle] = useState('');
+  const [blogContent, setBlogContent] = useState('');
+  const [blogImage, setBlogImage] = useState('');
+
+  // Reviews to approve
+  const [pendingReviews, setPendingReviews] = useState<any[]>([]);
 
   useEffect(() => {
-    if (!magazineId) return;
-
-    // Listen for approved reviews
-    const q = query(
-      collection(db, 'reviews'),
-      where('magazineId', '==', magazineId),
-      where('approved', '==', true),
-      orderBy('createdAt', 'desc')
-    );
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      setReviews(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
-
-    return unsubscribe;
-  }, [magazineId]);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user || !comment.trim()) return;
-
-    setLoading(true);
-    try {
-      await addDoc(collection(db, 'reviews'), {
-        magazineId,
-        userId: user.uid,
-        userName: user.displayName || user.email?.split('@')[0] || 'Okur',
-        comment: comment.trim(),
-        approved: false, // Needs admin approval
-        createdAt: serverTimestamp(),
-      });
-      setComment('');
-      alert('Yorumunuz gönderildi, onaylandıktan sonra görünecektir.');
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
+    if (activeSubTab === 'reviews') {
+      fetchPendingReviews();
     }
+  }, [activeSubTab]);
+
+  const fetchPendingReviews = async () => {
+    const q = query(collection(db, 'reviews'), where('approved', '==', false));
+    const snap = await getDocs(q);
+    setPendingReviews(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
   };
 
+  const handleAddMagazine = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await addDoc(collection(db, 'magazines'), {
+        title: magTitle,
+        issueNumber: Number(magIssue),
+        coverUrl: magCover,
+        description: magDesc,
+        pages: magPages.split(',').map(s => s.trim()),
+        createdAt: serverTimestamp()
+      });
+      alert('Dergi başarıyla eklendi.');
+      setMagTitle(''); setMagIssue(''); setMagCover(''); setMagDesc(''); setMagPages('');
+    } catch (err) { console.error(err); }
+  };
+
+  const handleAddBlog = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await addDoc(collection(db, 'blogs'), {
+        title: blogTitle,
+        content: blogContent,
+        imageUrl: blogImage,
+        createdAt: serverTimestamp()
+      });
+      alert('Blog yazısı başarıyla eklendi.');
+      setBlogTitle(''); setBlogContent(''); setBlogImage('');
+    } catch (err) { console.error(err); }
+  };
+
+  const approveReview = async (id: string) => {
+    await updateDoc(doc(db, 'reviews', id), { approved: true });
+    fetchPendingReviews();
+  };
+
+  const deleteReview = async (id: string) => {
+    await deleteDoc(doc(db, 'reviews', id));
+    fetchPendingReviews();
+  };
+
+  if (!isAdmin) return <div className="p-12 text-center text-red-600 font-bold uppercase tracking-widest">Erişim Engellendi (Admin Değilsiniz)</div>;
+
   return (
-    <AnimatePresence>
-      {isOpen && (
-        <motion.div 
-          initial={{ opacity: 0, y: 100, scale: 0.95 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: 100, scale: 0.95 }}
-          className="fixed bottom-28 right-8 w-96 max-h-[60vh] bg-beige rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-wine/10 z-[120]"
-        >
-          {/* Header */}
-          <div className="p-4 border-b border-wine/10 flex justify-between items-center bg-wine text-beige">
-            <h3 className="font-serif italic text-lg">Yorumlar</h3>
-            <button onClick={onClose} className="p-1 hover:bg-beige/10 rounded-full transition-all">
-              <X size={20} />
-            </button>
-          </div>
+    <div className="max-w-6xl mx-auto p-8 space-y-12">
+      <div className="flex flex-col md:flex-row justify-between items-end border-b border-wine/10 pb-8 gap-4">
+        <div>
+          <h2 className="font-serif text-5xl italic text-wine">Admin Paneli</h2>
+          <p className="font-body text-gold text-lg mt-2">Dergiyi yönetin, topluluğu denetleyin.</p>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={() => setActiveSubTab('magazines')} className={`px-6 py-3 rounded-full font-sans font-bold text-xs uppercase tracking-widest transition-all ${activeSubTab === 'magazines' ? 'bg-wine text-beige' : 'bg-wine/5 text-wine hover:bg-wine/10'}`}>Sayılar</button>
+          <button onClick={() => setActiveSubTab('blogs')} className={`px-6 py-3 rounded-full font-sans font-bold text-xs uppercase tracking-widest transition-all ${activeSubTab === 'blogs' ? 'bg-wine text-beige' : 'bg-wine/5 text-wine hover:bg-wine/10'}`}>Bloglar</button>
+          <button onClick={() => setActiveSubTab('reviews')} className={`px-6 py-3 rounded-full font-sans font-bold text-xs uppercase tracking-widest transition-all ${activeSubTab === 'reviews' ? 'bg-wine text-beige' : 'bg-wine/5 text-wine hover:bg-wine/10'}`}>Yorumlar</button>
+        </div>
+      </div>
 
-          {/* List */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-4">
-            {reviews.length > 0 ? reviews.map((review) => (
-              <div key={review.id} className="space-y-1">
-                <div className="flex justify-between items-center">
-                  <span className="font-sans font-bold text-[10px] text-wine uppercase tracking-widest">{review.userName}</span>
-                  <span className="text-[8px] text-wine/40">
-                    {review.createdAt?.seconds ? new Date(review.createdAt.seconds * 1000).toLocaleDateString() : 'Az önce'}
-                  </span>
+      <div className="bg-white rounded-3xl shadow-xl border border-wine/5 overflow-hidden">
+        {activeSubTab === 'magazines' && (
+          <div className="p-8 lg:p-12 space-y-8">
+            <div className="flex items-center gap-3">
+              <Newspaper className="text-wine" />
+              <h3 className="font-serif text-3xl italic text-wine">Yeni Dergi Ekle</h3>
+            </div>
+            <form onSubmit={handleAddMagazine} className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <input type="text" placeholder="Başlık" value={magTitle} onChange={e => setMagTitle(e.target.value)} className="admin-input" required />
+              <input type="number" placeholder="Sayı No" value={magIssue} onChange={e => setMagIssue(e.target.value)} className="admin-input" required />
+              <input type="text" placeholder="Kapak URL" value={magCover} onChange={e => setMagCover(e.target.value)} className="admin-input" required />
+              <textarea placeholder="Açıklama" value={magDesc} onChange={e => setMagDesc(e.target.value)} className="admin-input md:col-span-2" required />
+              <textarea placeholder="Sayfa URL'leri (Virgül ile ayırın)" value={magPages} onChange={e => setMagPages(e.target.value)} className="admin-input md:col-span-2" required />
+              <button type="submit" className="md:col-span-2 editorial-gradient text-beige py-4 rounded-xl font-sans font-bold uppercase tracking-widest flex items-center justify-center gap-2">
+                <Plus size={18} /> Sayıyı Yayınla
+              </button>
+            </form>
+          </div>
+        )}
+
+        {activeSubTab === 'blogs' && (
+          <div className="p-8 lg:p-12 space-y-8">
+            <div className="flex items-center gap-3">
+              <BookOpen className="text-wine" />
+              <h3 className="font-serif text-3xl italic text-wine">Yeni Blog Yazısı</h3>
+            </div>
+            <form onSubmit={handleAddBlog} className="space-y-6">
+              <input type="text" placeholder="Yazı Başlığı" value={blogTitle} onChange={e => setBlogTitle(e.target.value)} className="admin-input w-full" required />
+              <input type="text" placeholder="Görsel URL" value={blogImage} onChange={e => setBlogImage(e.target.value)} className="admin-input w-full" />
+              <textarea placeholder="İçerik (Markdown desteklenir)" value={blogContent} onChange={e => setBlogContent(e.target.value)} className="admin-input w-full h-64" required />
+              <button type="submit" className="w-full editorial-gradient text-beige py-4 rounded-xl font-sans font-bold uppercase tracking-widest flex items-center justify-center gap-2">
+                <Plus size={18} /> Yazıyı Paylaş
+              </button>
+            </form>
+          </div>
+        )}
+
+        {activeSubTab === 'reviews' && (
+          <div className="p-8 lg:p-12 space-y-8">
+            <div className="flex items-center gap-3">
+              <MessageSquare className="text-wine" />
+              <h3 className="font-serif text-3xl italic text-wine">Yorum Denetimi</h3>
+            </div>
+            <div className="space-y-4">
+              {pendingReviews.length > 0 ? pendingReviews.map((rev) => (
+                <div key={rev.id} className="bg-beige rounded-2xl p-6 border border-wine/5 flex flex-col md:flex-row justify-between items-center gap-6">
+                  <div className="space-y-2">
+                    <p className="font-sans font-bold text-xs text-wine uppercase tracking-widest">{rev.userName} • {rev.magazineId}</p>
+                    <p className="font-body italic text-wine/80">"{rev.comment}"</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => approveReview(rev.id)} className="p-3 bg-green-600 text-white rounded-full hover:scale-105 transition-all shadow-lg"><Check size={20} /></button>
+                    <button onClick={() => deleteReview(rev.id)} className="p-3 bg-red-600 text-white rounded-full hover:scale-105 transition-all shadow-lg"><Trash2 size={20} /></button>
+                  </div>
                 </div>
-                <p className="font-body text-sm text-wine/80 bg-white p-3 rounded-xl border border-wine/5 italic">
-                  {review.comment}
-                </p>
-              </div>
-            )) : (
-              <div className="py-12 text-center text-wine/30 italic text-sm">
-                İlk yorumu siz yapın. (Yorumlar onaylandıktan sonra görünür)
-              </div>
-            )}
+              )) : (
+                <div className="py-24 text-center text-wine/30 italic">Bekleyen yorum bulunmamaktadır.</div>
+              )}
+            </div>
           </div>
-
-          {/* Footer - Form */}
-          <div className="p-4 border-t border-wine/10 bg-white">
-            {user ? (
-              <form onSubmit={handleSubmit} className="flex gap-2">
-                <input 
-                  type="text" 
-                  value={comment}
-                  onChange={(e) => setComment(e.target.value)}
-                  placeholder="Yorumunuzu yazın..."
-                  className="flex-1 bg-beige border border-wine/10 rounded-full px-4 py-2 text-sm outline-none focus:border-wine transition-all"
-                  disabled={loading}
-                />
-                <button 
-                  type="submit"
-                  disabled={loading || !comment.trim()}
-                  className="p-2 bg-wine text-beige rounded-full hover:scale-105 active:scale-95 transition-all disabled:opacity-50"
-                >
-                  <Send size={18} />
-                </button>
-              </form>
-            ) : (
-              <div className="flex items-center justify-center gap-2 text-wine/40 py-2">
-                <Lock size={14} />
-                <span className="text-xs font-bold uppercase tracking-widest">Yorum yazmak için giriş yapın</span>
-              </div>
-            )}
-          </div>
-        </motion.div>
-      )}
-    </AnimatePresence>
+        )}
+      </div>
+      
+      <style>{`
+        .admin-input {
+          @apply bg-beige border border-wine/10 px-4 py-4 rounded-xl outline-none focus:border-wine transition-all font-body text-wine placeholder:text-wine/30;
+        }
+      `}</style>
+    </div>
   );
 };
 
-export default ReviewPopup;
+export default Admin;
+
